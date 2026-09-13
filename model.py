@@ -1,73 +1,70 @@
-import json
-import math
-from collections import defaultdict, Counter
-from typing import List, Tuple
+"""SVM-based classifier wrapper.
+
+This file replaces the previous Naive Bayes implementation with a lightweight
+SVM wrapper using scikit-learn. The API preserves `train`, `predict`,
+`save`, and `load` methods so `app.py` can remain largely unchanged.
+"""
+
+from typing import List, Tuple, Dict
+import numpy as np
+from sklearn.svm import SVC
+import joblib
 
 
-class NaiveBayesModel:
+class SVMModel:
     def __init__(self):
-        self.class_priors = {}  # P(class)
-        self.likelihoods = {}  # P(word|class)
-        self.vocab = set()
+        self.model: SVC | None = None
+        self.vocab: Dict[str, int] = {}
 
-    def train(self, docs: List[List[str]], labels: List[str], alpha: float = 1.0):
-        counts = defaultdict(Counter)
-        class_counts = Counter()
+    def _build_vocab(self, docs: List[List[str]]):
+        idx = 0
+        for doc in docs:
+            for w in doc:
+                if w not in self.vocab:
+                    self.vocab[w] = idx
+                    idx += 1
 
-        for doc, label in zip(docs, labels):
-            class_counts[label] += 1
-            for word in doc:
-                counts[label][word] += 1
-                self.vocab.add(word)
+    def _docs_to_matrix(self, docs: List[List[str]]) -> np.ndarray:
+        X = np.zeros((len(docs), max(len(self.vocab), 1)), dtype=float)
+        for i, doc in enumerate(docs):
+            for w in doc:
+                j = self.vocab.get(w)
+                if j is not None:
+                    X[i, j] += 1.0
+        return X
 
-        total_docs = sum(class_counts.values())
-        self.class_priors = {c: class_counts[c] / total_docs for c in class_counts}
-
-        # compute likelihoods with Laplace smoothing
-        self.likelihoods = {}
-        V = len(self.vocab)
-        for c in counts:
-            total_words = sum(counts[c].values())
-            self.likelihoods[c] = {}
-            for word in self.vocab:
-                self.likelihoods[c][word] = (counts[c][word] + alpha) / (total_words + alpha * V)
+    def train(self, docs: List[List[str]], labels: List[str]):
+        if not docs:
+            raise ValueError("No training documents provided")
+        self.vocab = {}
+        self._build_vocab(docs)
+        X = self._docs_to_matrix(docs)
+        y = np.array(labels)
+        clf = SVC(probability=True, kernel="linear")
+        clf.fit(X, y)
+        self.model = clf
 
     def predict(self, features: List[str]) -> Tuple[str, float]:
-        # compute log probabilities
-        log_probs = {}
-        for c in self.class_priors:
-            log_prob = math.log(self.class_priors[c]) if self.class_priors[c] > 0 else float("-inf")
-            for word in features:
-                if word in self.vocab:
-                    log_prob += math.log(self.likelihoods[c].get(word, 1e-12))
-                else:
-                    # unseen words contribute a small uniform probability
-                    log_prob += math.log(1e-12)
-            log_probs[c] = log_prob
-
-        # convert log probs to normalized probabilities
-        max_log = max(log_probs.values())
-        exps = {c: math.exp(log_probs[c] - max_log) for c in log_probs}
-        total = sum(exps.values())
-        probs = {c: exps[c] / total for c in exps}
-        best = max(probs, key=probs.get)
-        return best, probs[best]
+        if self.model is None:
+            raise RuntimeError("Model is not trained or loaded")
+        X = np.zeros((1, max(len(self.vocab), 1)), dtype=float)
+        for w in features:
+            j = self.vocab.get(w)
+            if j is not None:
+                X[0, j] += 1.0
+        probs = self.model.predict_proba(X)[0]
+        classes = list(self.model.classes_)
+        best_idx = int(np.argmax(probs))
+        return classes[best_idx], float(probs[best_idx])
 
     def save(self, path: str):
-        payload = {
-            "class_priors": self.class_priors,
-            "likelihoods": self.likelihoods,
-            "vocab": list(self.vocab),
-        }
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False)
+        payload = {"model": self.model, "vocab": self.vocab}
+        joblib.dump(payload, path)
 
     @classmethod
     def load(cls, path: str):
+        payload = joblib.load(path)
         m = cls()
-        with open(path, "r", encoding="utf-8") as f:
-            payload = json.load(f)
-        m.class_priors = {k: float(v) for k, v in payload.get("class_priors", {}).items()}
-        m.likelihoods = payload.get("likelihoods", {})
-        m.vocab = set(payload.get("vocab", []))
+        m.model = payload.get("model")
+        m.vocab = payload.get("vocab", {})
         return m

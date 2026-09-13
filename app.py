@@ -2,14 +2,16 @@ from flask import Flask, request, jsonify
 from model import NaiveBayesModel
 import os
 
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "model_params.json")
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "model_params.joblib")
 
 app = Flask(__name__)
 
 
 def load_model():
     try:
-        model = NaiveBayesModel.load(MODEL_PATH)
+        from model import SVMModel
+
+        model = SVMModel.load(MODEL_PATH)
         return model
     except Exception:
         return None
@@ -36,8 +38,8 @@ def classify():
         return jsonify({
             "success": False,
             "status": 503,
-            "message": "Naive Bayes model is not available",
-            "data": {"model": "naive_bayes", "health_status": "unhealthy"},
+            "message": "SVM model is not available",
+            "data": {"model": "svm", "health_status": "unhealthy"},
         }), 503
 
     payload = request.get_json(silent=True)
@@ -71,9 +73,9 @@ def classify():
         return jsonify({
             "success": True,
             "status": 200,
-            "message": "Dự đoán Naive Bayes thành công",
+            "message": "Prediction successful",
             "data": {
-                "model": "naive_bayes",
+                "model": "svm",
                 "endpoint": "/api/v1/classify",
                 "prediction": prediction,
                 "probability": round(prob, 4),

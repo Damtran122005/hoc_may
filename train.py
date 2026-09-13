@@ -1,4 +1,4 @@
-from model import NaiveBayesModel
+from model import SVMModel
 
 SAMPLE_DOCS = [
     ["free", "offer", "click"],
@@ -20,10 +20,10 @@ SAMPLE_LABELS = [
 
 
 def main():
-    m = NaiveBayesModel()
+    m = SVMModel()
     m.train(SAMPLE_DOCS, SAMPLE_LABELS)
-    m.save("model_params.json")
-    print("Model trained and saved to model_params.json")
+    m.save("model_params.joblib")
+    print("SVM model trained and saved to model_params.joblib")
 
 
 if __name__ == "__main__":

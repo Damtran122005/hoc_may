@@ -1,2 +1,5 @@
 flask>=2.0
 gunicorn>=20.0
+numpy>=1.21
+scikit-learn>=1.0
+joblib>=1.0
